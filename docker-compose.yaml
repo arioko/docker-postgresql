@@ -1,0 +1,84 @@
+version: '3'
+services:
+  postgres:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    container_name: postgres
+    image: postgres
+    environment:
+      TZ: Europe/Madrid
+      LANGUAGE: es_ES:es
+      LANG: es_ES.UTF-8
+      LC_ALL: es_ES.UTF-8
+      POSTGRES_USER: ${POSTGRES_USER:-admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-admin}
+      POSTGRES_DB: ${POSTGRES_DB:-postgres}
+      POSTGRES_INITDB_ARGS: -E 'UTF-8' --lc-collate='es_ES.UTF-8' --lc-ctype='es_ES.UTF-8'
+    ports:
+      - "${POSTGRES_PORT_EXPOSE:-5432}:5432"
+    restart: unless-stopped
+    volumes:
+      - "./data-postgres:/var/lib/postgresql/data"
+      - "./scripts/schema.sql:/docker-entrypoint-initdb.d/1.sql"
+      - "./scripts/data.sql:/docker-entrypoint-initdb.d/2.sql"
+    networks:
+      - db-network
+
+  pgadmin:
+    env_file:
+      - .env
+    container_name: pgadmin
+    image: dpage/pgadmin4
+    environment:
+      TZ: Europe/Madrid
+      LANGUAGE: es_ES:es
+      LANG: es_ES.UTF-8
+      LC_ALL: es_ES.UTF-8
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_USER:-admin@pgadmin.com}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
+      PGADMIN_LISTEN_PORT: 80
+      PGADMIN_SERVER_JSON_FILE: /pgadmin4/servers.json
+    ports:
+      - "${PGADMIN_PORT_EXPOSE:-5050}:80"
+    restart: unless-stopped
+    user: root
+    volumes:
+      - "./data-pgadmin:/var/lib/pgadmin"
+    networks:
+      - db-network
+    depends_on:
+      - postgres
+    entrypoint: >
+      /bin/sh -c "
+        touch /root/.pgpass;
+        echo 'postgres:5432:${POSTGRES_DB:-postgres}:${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-admin}' > /root/.pgpass;
+        chmod 0600 /root/.pgpass;
+        touch /pgadmin4/servers.json
+        echo '{' > /pgadmin4/servers.json;
+        echo '    \"Servers\": {' >> /pgadmin4/servers.json;
+        echo '        \"1\": {' >> /pgadmin4/servers.json;
+        echo '            \"Name\": \"docker-postgres\",' >> /pgadmin4/servers.json;
+        echo '            \"Group\": \"Servers\",' >> /pgadmin4/servers.json;
+        echo '            \"Port\": 5432,' >> /pgadmin4/servers.json;
+        echo '            \"Username\": \"${POSTGRES_USER:-admin}\",' >> /pgadmin4/servers.json;
+        echo '            \"Host\": \"postgres\",' >> /pgadmin4/servers.json;
+        echo '            \"SSLMode\": \"prefer\",' >> /pgadmin4/servers.json;
+        echo '            \"MaintenanceDB\": \"${POSTGRES_DB:-postgres}\",' >> /pgadmin4/servers.json;
+        echo '            \"PassFile\": \"/root/.pgpass\"' >> /pgadmin4/servers.json;
+        echo '        }' >> /pgadmin4/servers.json;
+        echo '    }' >> /pgadmin4/servers.json;
+        echo '}' >> /pgadmin4/servers.json;
+        /bin/sh /entrypoint.sh
+      "
+    command: [""]
+
+volumes:
+  data-postgres:
+  data-pgadmin:
+
+networks:
+  db-network:
+    driver: bridge
